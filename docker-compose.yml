@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: go-api-postgres
+    environment:
+      POSTGRES_DB: go_api_test1
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - go-api-network
+
+  # Go API Application
+  api:
+    build: .
+    container_name: go-api-app
+    environment:
+      DATABASE_URL: postgres://user:password@postgres:5432/go_api_test1?sslmode=disable
+      JWT_SECRET: your-super-secret-jwt-key-change-this-in-production
+      PORT: 8080
+      ENVIRONMENT: production
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+    networks:
+      - go-api-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+
+networks:
+  go-api-network:
+    driver: bridge
