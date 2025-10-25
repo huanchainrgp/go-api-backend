@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"log"
 	"net/http"
 	"strconv"
 
@@ -32,8 +33,11 @@ func NewAssetHandler(db *gorm.DB) *AssetHandler {
 // @Failure      500  {object}  models.ErrorResponse
 // @Router       /assets [get]
 func (h *AssetHandler) GetAssets(c *gin.Context) {
+	log.Printf("Asset: GetAssets request from %s", c.ClientIP())
+	
 	var assets []models.Asset
 	if err := h.db.Find(&assets).Error; err != nil {
+		log.Printf("Asset: Database error retrieving assets: %v", err)
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
 			Error:   "Database error",
 			Message: "Failed to retrieve assets",
@@ -41,6 +45,7 @@ func (h *AssetHandler) GetAssets(c *gin.Context) {
 		return
 	}
 
+	log.Printf("Asset: Successfully retrieved %d assets", len(assets))
 	c.JSON(http.StatusOK, assets)
 }
 
@@ -60,6 +65,7 @@ func (h *AssetHandler) GetAssets(c *gin.Context) {
 func (h *AssetHandler) GetAsset(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
+		log.Printf("Asset: Invalid asset ID format: %s from %s", c.Param("id"), c.ClientIP())
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{
 			Error:   "Invalid ID",
 			Message: "Asset ID must be a valid number",
@@ -67,15 +73,19 @@ func (h *AssetHandler) GetAsset(c *gin.Context) {
 		return
 	}
 
+	log.Printf("Asset: GetAsset request for ID: %d from %s", id, c.ClientIP())
+
 	var asset models.Asset
 	if err := h.db.First(&asset, uint(id)).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
+			log.Printf("Asset: Asset not found with ID: %d", id)
 			c.JSON(http.StatusNotFound, models.ErrorResponse{
 				Error:   "Asset not found",
 				Message: "The requested asset does not exist",
 			})
 			return
 		}
+		log.Printf("Asset: Database error retrieving asset ID: %d: %v", id, err)
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
 			Error:   "Database error",
 			Message: "Failed to retrieve asset",
@@ -83,6 +93,7 @@ func (h *AssetHandler) GetAsset(c *gin.Context) {
 		return
 	}
 
+	log.Printf("Asset: Successfully retrieved asset ID: %d, name: %s", asset.ID, asset.Name)
 	c.JSON(http.StatusOK, asset)
 }
 
@@ -99,14 +110,19 @@ func (h *AssetHandler) GetAsset(c *gin.Context) {
 // @Failure      500  {object}  models.ErrorResponse
 // @Router       /assets [post]
 func (h *AssetHandler) CreateAsset(c *gin.Context) {
+	log.Printf("Asset: CreateAsset request from %s", c.ClientIP())
+	
 	var createReq models.CreateAssetRequest
 	if err := c.ShouldBindJSON(&createReq); err != nil {
+		log.Printf("Asset: Invalid create request from %s: %v", c.ClientIP(), err)
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{
 			Error:   "Invalid request",
 			Message: err.Error(),
 		})
 		return
 	}
+
+	log.Printf("Asset: Creating asset with name: %s, symbol: %s, type: %s", createReq.Name, createReq.Symbol, createReq.Type)
 
 	asset := models.Asset{
 		Name:        createReq.Name,
@@ -118,6 +134,7 @@ func (h *AssetHandler) CreateAsset(c *gin.Context) {
 	}
 
 	if err := h.db.Create(&asset).Error; err != nil {
+		log.Printf("Asset: Database error creating asset: %v", err)
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
 			Error:   "Database error",
 			Message: "Failed to create asset",
@@ -125,6 +142,7 @@ func (h *AssetHandler) CreateAsset(c *gin.Context) {
 		return
 	}
 
+	log.Printf("Asset: Successfully created asset ID: %d, name: %s", asset.ID, asset.Name)
 	c.JSON(http.StatusCreated, asset)
 }
 
@@ -145,6 +163,7 @@ func (h *AssetHandler) CreateAsset(c *gin.Context) {
 func (h *AssetHandler) UpdateAsset(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
+		log.Printf("Asset: Invalid asset ID format for update: %s from %s", c.Param("id"), c.ClientIP())
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{
 			Error:   "Invalid ID",
 			Message: "Asset ID must be a valid number",
@@ -152,15 +171,19 @@ func (h *AssetHandler) UpdateAsset(c *gin.Context) {
 		return
 	}
 
+	log.Printf("Asset: UpdateAsset request for ID: %d from %s", id, c.ClientIP())
+
 	var asset models.Asset
 	if err := h.db.First(&asset, uint(id)).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
+			log.Printf("Asset: Asset not found for update with ID: %d", id)
 			c.JSON(http.StatusNotFound, models.ErrorResponse{
 				Error:   "Asset not found",
 				Message: "The requested asset does not exist",
 			})
 			return
 		}
+		log.Printf("Asset: Database error retrieving asset for update ID: %d: %v", id, err)
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
 			Error:   "Database error",
 			Message: "Failed to retrieve asset",
@@ -170,12 +193,16 @@ func (h *AssetHandler) UpdateAsset(c *gin.Context) {
 
 	var updateReq models.UpdateAssetRequest
 	if err := c.ShouldBindJSON(&updateReq); err != nil {
+		log.Printf("Asset: Invalid update request for asset ID: %d: %v", id, err)
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{
 			Error:   "Invalid request",
 			Message: err.Error(),
 		})
 		return
 	}
+
+	log.Printf("Asset: Updating asset ID: %d with fields: name=%s, symbol=%s, type=%s, price=%.2f", 
+		id, updateReq.Name, updateReq.Symbol, updateReq.Type, updateReq.Price)
 
 	// Update fields if provided
 	if updateReq.Name != "" {
@@ -198,6 +225,7 @@ func (h *AssetHandler) UpdateAsset(c *gin.Context) {
 	}
 
 	if err := h.db.Save(&asset).Error; err != nil {
+		log.Printf("Asset: Database error updating asset ID: %d: %v", id, err)
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
 			Error:   "Database error",
 			Message: "Failed to update asset",
@@ -205,6 +233,7 @@ func (h *AssetHandler) UpdateAsset(c *gin.Context) {
 		return
 	}
 
+	log.Printf("Asset: Successfully updated asset ID: %d, name: %s", asset.ID, asset.Name)
 	c.JSON(http.StatusOK, asset)
 }
 
@@ -224,6 +253,7 @@ func (h *AssetHandler) UpdateAsset(c *gin.Context) {
 func (h *AssetHandler) DeleteAsset(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
+		log.Printf("Asset: Invalid asset ID format for delete: %s from %s", c.Param("id"), c.ClientIP())
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{
 			Error:   "Invalid ID",
 			Message: "Asset ID must be a valid number",
@@ -231,15 +261,19 @@ func (h *AssetHandler) DeleteAsset(c *gin.Context) {
 		return
 	}
 
+	log.Printf("Asset: DeleteAsset request for ID: %d from %s", id, c.ClientIP())
+
 	var asset models.Asset
 	if err := h.db.First(&asset, uint(id)).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
+			log.Printf("Asset: Asset not found for delete with ID: %d", id)
 			c.JSON(http.StatusNotFound, models.ErrorResponse{
 				Error:   "Asset not found",
 				Message: "The requested asset does not exist",
 			})
 			return
 		}
+		log.Printf("Asset: Database error retrieving asset for delete ID: %d: %v", id, err)
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
 			Error:   "Database error",
 			Message: "Failed to retrieve asset",
@@ -247,7 +281,10 @@ func (h *AssetHandler) DeleteAsset(c *gin.Context) {
 		return
 	}
 
+	log.Printf("Asset: Deleting asset ID: %d, name: %s", asset.ID, asset.Name)
+
 	if err := h.db.Delete(&asset).Error; err != nil {
+		log.Printf("Asset: Database error deleting asset ID: %d: %v", id, err)
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
 			Error:   "Database error",
 			Message: "Failed to delete asset",
@@ -255,5 +292,6 @@ func (h *AssetHandler) DeleteAsset(c *gin.Context) {
 		return
 	}
 
+	log.Printf("Asset: Successfully deleted asset ID: %d, name: %s", asset.ID, asset.Name)
 	c.JSON(http.StatusOK, gin.H{"message": "Asset deleted successfully"})
 }

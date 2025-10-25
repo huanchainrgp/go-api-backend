@@ -39,12 +39,17 @@ import (
 // @description Type "Bearer" followed by a space and JWT token.
 
 func main() {
+	log.Println("=== Go API Test1 Server Starting ===")
+	
 	// Load environment variables
 	if err := godotenv.Load(); err != nil {
-		log.Println("No .env file found")
+		log.Println("No .env file found - using environment variables")
+	} else {
+		log.Println("Environment variables loaded from .env file")
 	}
 
 	// Initialize Swagger docs
+	log.Println("Initializing Swagger documentation...")
 	docs.SwaggerInfo.Title = "Go API Test1"
 	docs.SwaggerInfo.Description = "A backend API with Users, Assets, and Transactions"
 	docs.SwaggerInfo.Version = "1.0"
@@ -53,35 +58,50 @@ func main() {
 	docs.SwaggerInfo.Schemes = []string{"http"}
 
 	// Initialize configuration
+	log.Println("Loading configuration...")
 	cfg := config.Load()
+	log.Printf("Configuration loaded - Database URL: %s", cfg.DatabaseURL)
 
 	// Initialize database
+	log.Println("Connecting to database...")
 	db, err := database.Initialize(cfg.DatabaseURL)
 	if err != nil {
-		log.Fatal("Failed to connect to database:", err)
+		log.Fatalf("Failed to connect to database: %v", err)
 	}
+	log.Println("Database connection established successfully")
 
 	// Auto-migrate the schema with error handling for existing data
+	log.Println("Running database migrations...")
 	if err := migrateDatabase(db); err != nil {
-		log.Fatal("Failed to migrate database:", err)
+		log.Fatalf("Failed to migrate database: %v", err)
 	}
 
 	// Initialize Gin router
+	log.Println("Initializing Gin router...")
 	router := gin.Default()
 
+	// Add logging middleware
+	log.Println("Adding logging middleware...")
+	router.Use(middleware.LoggerMiddleware())
+
 	// Add CORS middleware
+	log.Println("Adding CORS middleware...")
 	router.Use(middleware.CORS())
 
 	// Initialize handlers
+	log.Println("Initializing handlers...")
 	userHandler := handlers.NewUserHandler(db)
 	assetHandler := handlers.NewAssetHandler(db)
 	transactionHandler := handlers.NewTransactionHandler(db)
 	authHandler := handlers.NewAuthHandler(db)
+	log.Println("All handlers initialized successfully")
 
 	// API routes
+	log.Println("Setting up API routes...")
 	v1 := router.Group("/api/v1")
 	{
 		// Authentication routes
+		log.Println("Setting up authentication routes...")
 		auth := v1.Group("/auth")
 		{
 			auth.POST("/register", authHandler.Register)
@@ -89,10 +109,12 @@ func main() {
 		}
 
 		// Protected routes
+		log.Println("Setting up protected routes...")
 		protected := v1.Group("/")
 		protected.Use(middleware.AuthMiddleware())
 		{
 			// User routes
+			log.Println("Setting up user routes...")
 			users := protected.Group("/users")
 			{
 				users.GET("", userHandler.GetUsers)
@@ -102,6 +124,7 @@ func main() {
 			}
 
 			// Asset routes
+			log.Println("Setting up asset routes...")
 			assets := protected.Group("/assets")
 			{
 				assets.GET("", assetHandler.GetAssets)
@@ -112,6 +135,7 @@ func main() {
 			}
 
 			// Transaction routes
+			log.Println("Setting up transaction routes...")
 			transactions := protected.Group("/transactions")
 			{
 				transactions.GET("", transactionHandler.GetTransactions)
@@ -124,6 +148,7 @@ func main() {
 	}
 
 	// Swagger documentation
+	log.Println("Setting up Swagger documentation...")
 	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	// Start server
@@ -132,11 +157,14 @@ func main() {
 		port = "8080"
 	}
 
+	log.Printf("=== Server Configuration Complete ===")
 	log.Printf("Server starting on port %s", port)
 	log.Printf("Swagger UI available at: http://localhost:%s/swagger/index.html", port)
+	log.Printf("API endpoints available at: http://localhost:%s/api/v1", port)
+	log.Println("=== Server Ready to Accept Requests ===")
 	
 	if err := router.Run(":" + port); err != nil {
-		log.Fatal("Failed to start server:", err)
+		log.Fatalf("Failed to start server: %v", err)
 	}
 }
 

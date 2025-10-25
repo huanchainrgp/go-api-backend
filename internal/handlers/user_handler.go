@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"log"
 	"net/http"
 	"strconv"
 
@@ -32,8 +33,11 @@ func NewUserHandler(db *gorm.DB) *UserHandler {
 // @Failure      500  {object}  models.ErrorResponse
 // @Router       /users [get]
 func (h *UserHandler) GetUsers(c *gin.Context) {
+	log.Printf("User: GetUsers request from %s", c.ClientIP())
+	
 	var users []models.User
 	if err := h.db.Find(&users).Error; err != nil {
+		log.Printf("User: Database error retrieving users: %v", err)
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
 			Error:   "Database error",
 			Message: "Failed to retrieve users",
@@ -41,6 +45,7 @@ func (h *UserHandler) GetUsers(c *gin.Context) {
 		return
 	}
 
+	log.Printf("User: Successfully retrieved %d users", len(users))
 	c.JSON(http.StatusOK, users)
 }
 
@@ -60,6 +65,7 @@ func (h *UserHandler) GetUsers(c *gin.Context) {
 func (h *UserHandler) GetUser(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
+		log.Printf("User: Invalid user ID format: %s from %s", c.Param("id"), c.ClientIP())
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{
 			Error:   "Invalid ID",
 			Message: "User ID must be a valid number",
@@ -67,15 +73,19 @@ func (h *UserHandler) GetUser(c *gin.Context) {
 		return
 	}
 
+	log.Printf("User: GetUser request for ID: %d from %s", id, c.ClientIP())
+
 	var user models.User
 	if err := h.db.First(&user, uint(id)).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
+			log.Printf("User: User not found with ID: %d", id)
 			c.JSON(http.StatusNotFound, models.ErrorResponse{
 				Error:   "User not found",
 				Message: "The requested user does not exist",
 			})
 			return
 		}
+		log.Printf("User: Database error retrieving user ID: %d: %v", id, err)
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
 			Error:   "Database error",
 			Message: "Failed to retrieve user",
@@ -83,6 +93,7 @@ func (h *UserHandler) GetUser(c *gin.Context) {
 		return
 	}
 
+	log.Printf("User: Successfully retrieved user ID: %d, email: %s", user.ID, user.Email)
 	c.JSON(http.StatusOK, user)
 }
 
@@ -103,6 +114,7 @@ func (h *UserHandler) GetUser(c *gin.Context) {
 func (h *UserHandler) UpdateUser(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
+		log.Printf("User: Invalid user ID format for update: %s from %s", c.Param("id"), c.ClientIP())
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{
 			Error:   "Invalid ID",
 			Message: "User ID must be a valid number",
@@ -110,15 +122,19 @@ func (h *UserHandler) UpdateUser(c *gin.Context) {
 		return
 	}
 
+	log.Printf("User: UpdateUser request for ID: %d from %s", id, c.ClientIP())
+
 	var user models.User
 	if err := h.db.First(&user, uint(id)).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
+			log.Printf("User: User not found for update with ID: %d", id)
 			c.JSON(http.StatusNotFound, models.ErrorResponse{
 				Error:   "User not found",
 				Message: "The requested user does not exist",
 			})
 			return
 		}
+		log.Printf("User: Database error retrieving user for update ID: %d: %v", id, err)
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
 			Error:   "Database error",
 			Message: "Failed to retrieve user",
@@ -128,12 +144,16 @@ func (h *UserHandler) UpdateUser(c *gin.Context) {
 
 	var updateReq models.UpdateUserRequest
 	if err := c.ShouldBindJSON(&updateReq); err != nil {
+		log.Printf("User: Invalid update request for user ID: %d: %v", id, err)
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{
 			Error:   "Invalid request",
 			Message: err.Error(),
 		})
 		return
 	}
+
+	log.Printf("User: Updating user ID: %d with fields: email=%s, username=%s, firstName=%s, lastName=%s", 
+		id, updateReq.Email, updateReq.Username, updateReq.FirstName, updateReq.LastName)
 
 	// Update fields if provided
 	if updateReq.Email != "" {
@@ -153,6 +173,7 @@ func (h *UserHandler) UpdateUser(c *gin.Context) {
 	}
 
 	if err := h.db.Save(&user).Error; err != nil {
+		log.Printf("User: Database error updating user ID: %d: %v", id, err)
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
 			Error:   "Database error",
 			Message: "Failed to update user",
@@ -160,6 +181,7 @@ func (h *UserHandler) UpdateUser(c *gin.Context) {
 		return
 	}
 
+	log.Printf("User: Successfully updated user ID: %d, email: %s", user.ID, user.Email)
 	c.JSON(http.StatusOK, user)
 }
 
@@ -179,6 +201,7 @@ func (h *UserHandler) UpdateUser(c *gin.Context) {
 func (h *UserHandler) DeleteUser(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
+		log.Printf("User: Invalid user ID format for delete: %s from %s", c.Param("id"), c.ClientIP())
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{
 			Error:   "Invalid ID",
 			Message: "User ID must be a valid number",
@@ -186,15 +209,19 @@ func (h *UserHandler) DeleteUser(c *gin.Context) {
 		return
 	}
 
+	log.Printf("User: DeleteUser request for ID: %d from %s", id, c.ClientIP())
+
 	var user models.User
 	if err := h.db.First(&user, uint(id)).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
+			log.Printf("User: User not found for delete with ID: %d", id)
 			c.JSON(http.StatusNotFound, models.ErrorResponse{
 				Error:   "User not found",
 				Message: "The requested user does not exist",
 			})
 			return
 		}
+		log.Printf("User: Database error retrieving user for delete ID: %d: %v", id, err)
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
 			Error:   "Database error",
 			Message: "Failed to retrieve user",
@@ -202,7 +229,10 @@ func (h *UserHandler) DeleteUser(c *gin.Context) {
 		return
 	}
 
+	log.Printf("User: Deleting user ID: %d, email: %s", user.ID, user.Email)
+
 	if err := h.db.Delete(&user).Error; err != nil {
+		log.Printf("User: Database error deleting user ID: %d: %v", id, err)
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
 			Error:   "Database error",
 			Message: "Failed to delete user",
@@ -210,5 +240,6 @@ func (h *UserHandler) DeleteUser(c *gin.Context) {
 		return
 	}
 
+	log.Printf("User: Successfully deleted user ID: %d, email: %s", user.ID, user.Email)
 	c.JSON(http.StatusOK, gin.H{"message": "User deleted successfully"})
 }

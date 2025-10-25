@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"log"
 	"net/http"
 	"strconv"
 
@@ -32,8 +33,11 @@ func NewTransactionHandler(db *gorm.DB) *TransactionHandler {
 // @Failure      500  {object}  models.ErrorResponse
 // @Router       /transactions [get]
 func (h *TransactionHandler) GetTransactions(c *gin.Context) {
+	log.Printf("Transaction: GetTransactions request from %s", c.ClientIP())
+	
 	var transactions []models.Transaction
 	if err := h.db.Preload("User").Preload("Asset").Find(&transactions).Error; err != nil {
+		log.Printf("Transaction: Database error retrieving transactions: %v", err)
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
 			Error:   "Database error",
 			Message: "Failed to retrieve transactions",
@@ -41,6 +45,7 @@ func (h *TransactionHandler) GetTransactions(c *gin.Context) {
 		return
 	}
 
+	log.Printf("Transaction: Successfully retrieved %d transactions", len(transactions))
 	c.JSON(http.StatusOK, transactions)
 }
 
@@ -60,6 +65,7 @@ func (h *TransactionHandler) GetTransactions(c *gin.Context) {
 func (h *TransactionHandler) GetTransaction(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
+		log.Printf("Transaction: Invalid transaction ID format: %s from %s", c.Param("id"), c.ClientIP())
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{
 			Error:   "Invalid ID",
 			Message: "Transaction ID must be a valid number",
@@ -67,15 +73,19 @@ func (h *TransactionHandler) GetTransaction(c *gin.Context) {
 		return
 	}
 
+	log.Printf("Transaction: GetTransaction request for ID: %d from %s", id, c.ClientIP())
+
 	var transaction models.Transaction
 	if err := h.db.Preload("User").Preload("Asset").First(&transaction, uint(id)).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
+			log.Printf("Transaction: Transaction not found with ID: %d", id)
 			c.JSON(http.StatusNotFound, models.ErrorResponse{
 				Error:   "Transaction not found",
 				Message: "The requested transaction does not exist",
 			})
 			return
 		}
+		log.Printf("Transaction: Database error retrieving transaction ID: %d: %v", id, err)
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
 			Error:   "Database error",
 			Message: "Failed to retrieve transaction",
@@ -83,6 +93,7 @@ func (h *TransactionHandler) GetTransaction(c *gin.Context) {
 		return
 	}
 
+	log.Printf("Transaction: Successfully retrieved transaction ID: %d, type: %s, amount: %.2f", transaction.ID, transaction.Type, transaction.Amount)
 	c.JSON(http.StatusOK, transaction)
 }
 
@@ -99,8 +110,11 @@ func (h *TransactionHandler) GetTransaction(c *gin.Context) {
 // @Failure      500  {object}  models.ErrorResponse
 // @Router       /transactions [post]
 func (h *TransactionHandler) CreateTransaction(c *gin.Context) {
+	log.Printf("Transaction: CreateTransaction request from %s", c.ClientIP())
+	
 	var createReq models.CreateTransactionRequest
 	if err := c.ShouldBindJSON(&createReq); err != nil {
+		log.Printf("Transaction: Invalid create request from %s: %v", c.ClientIP(), err)
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{
 			Error:   "Invalid request",
 			Message: err.Error(),
@@ -111,6 +125,7 @@ func (h *TransactionHandler) CreateTransaction(c *gin.Context) {
 	// Get user ID from JWT token
 	userID, exists := c.Get("user_id")
 	if !exists {
+		log.Printf("Transaction: User ID not found in token from %s", c.ClientIP())
 		c.JSON(http.StatusUnauthorized, models.ErrorResponse{
 			Error:   "Unauthorized",
 			Message: "User ID not found in token",
@@ -118,16 +133,21 @@ func (h *TransactionHandler) CreateTransaction(c *gin.Context) {
 		return
 	}
 
+	log.Printf("Transaction: Creating transaction for user ID: %v, asset ID: %d, type: %s, amount: %.2f", 
+		userID, createReq.AssetID, createReq.Type, createReq.Amount)
+
 	// Verify asset exists
 	var asset models.Asset
 	if err := h.db.First(&asset, createReq.AssetID).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
+			log.Printf("Transaction: Asset not found with ID: %d", createReq.AssetID)
 			c.JSON(http.StatusBadRequest, models.ErrorResponse{
 				Error:   "Asset not found",
 				Message: "The specified asset does not exist",
 			})
 			return
 		}
+		log.Printf("Transaction: Database error verifying asset ID: %d: %v", createReq.AssetID, err)
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
 			Error:   "Database error",
 			Message: "Failed to verify asset",
@@ -135,8 +155,11 @@ func (h *TransactionHandler) CreateTransaction(c *gin.Context) {
 		return
 	}
 
+	log.Printf("Transaction: Asset verified - ID: %d, name: %s", asset.ID, asset.Name)
+
 	// Calculate total value
 	totalValue := createReq.Amount * createReq.Price
+	log.Printf("Transaction: Calculated total value: %.2f (amount: %.2f * price: %.2f)", totalValue, createReq.Amount, createReq.Price)
 
 	transaction := models.Transaction{
 		UserID:      userID.(uint),
@@ -150,12 +173,15 @@ func (h *TransactionHandler) CreateTransaction(c *gin.Context) {
 	}
 
 	if err := h.db.Create(&transaction).Error; err != nil {
+		log.Printf("Transaction: Database error creating transaction: %v", err)
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
 			Error:   "Database error",
 			Message: "Failed to create transaction",
 		})
 		return
 	}
+
+	log.Printf("Transaction: Successfully created transaction ID: %d for user ID: %v", transaction.ID, userID)
 
 	// Load the created transaction with relationships
 	h.db.Preload("User").Preload("Asset").First(&transaction, transaction.ID)
@@ -180,6 +206,7 @@ func (h *TransactionHandler) CreateTransaction(c *gin.Context) {
 func (h *TransactionHandler) UpdateTransaction(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
+		log.Printf("Transaction: Invalid transaction ID format for update: %s from %s", c.Param("id"), c.ClientIP())
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{
 			Error:   "Invalid ID",
 			Message: "Transaction ID must be a valid number",
@@ -187,15 +214,19 @@ func (h *TransactionHandler) UpdateTransaction(c *gin.Context) {
 		return
 	}
 
+	log.Printf("Transaction: UpdateTransaction request for ID: %d from %s", id, c.ClientIP())
+
 	var transaction models.Transaction
 	if err := h.db.First(&transaction, uint(id)).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
+			log.Printf("Transaction: Transaction not found for update with ID: %d", id)
 			c.JSON(http.StatusNotFound, models.ErrorResponse{
 				Error:   "Transaction not found",
 				Message: "The requested transaction does not exist",
 			})
 			return
 		}
+		log.Printf("Transaction: Database error retrieving transaction for update ID: %d: %v", id, err)
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
 			Error:   "Database error",
 			Message: "Failed to retrieve transaction",
@@ -205,12 +236,16 @@ func (h *TransactionHandler) UpdateTransaction(c *gin.Context) {
 
 	var updateReq models.UpdateTransactionRequest
 	if err := c.ShouldBindJSON(&updateReq); err != nil {
+		log.Printf("Transaction: Invalid update request for transaction ID: %d: %v", id, err)
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{
 			Error:   "Invalid request",
 			Message: err.Error(),
 		})
 		return
 	}
+
+	log.Printf("Transaction: Updating transaction ID: %d with fields: type=%s, amount=%.2f, price=%.2f, status=%s", 
+		id, updateReq.Type, updateReq.Amount, updateReq.Price, updateReq.Status)
 
 	// Update fields if provided
 	if updateReq.Type != "" {
@@ -232,15 +267,19 @@ func (h *TransactionHandler) UpdateTransaction(c *gin.Context) {
 	// Recalculate total value if amount or price changed
 	if updateReq.Amount > 0 || updateReq.Price > 0 {
 		transaction.TotalValue = transaction.Amount * transaction.Price
+		log.Printf("Transaction: Recalculated total value: %.2f", transaction.TotalValue)
 	}
 
 	if err := h.db.Save(&transaction).Error; err != nil {
+		log.Printf("Transaction: Database error updating transaction ID: %d: %v", id, err)
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
 			Error:   "Database error",
 			Message: "Failed to update transaction",
 		})
 		return
 	}
+
+	log.Printf("Transaction: Successfully updated transaction ID: %d", transaction.ID)
 
 	// Load the updated transaction with relationships
 	h.db.Preload("User").Preload("Asset").First(&transaction, transaction.ID)
@@ -264,6 +303,7 @@ func (h *TransactionHandler) UpdateTransaction(c *gin.Context) {
 func (h *TransactionHandler) DeleteTransaction(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
+		log.Printf("Transaction: Invalid transaction ID format for delete: %s from %s", c.Param("id"), c.ClientIP())
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{
 			Error:   "Invalid ID",
 			Message: "Transaction ID must be a valid number",
@@ -271,15 +311,19 @@ func (h *TransactionHandler) DeleteTransaction(c *gin.Context) {
 		return
 	}
 
+	log.Printf("Transaction: DeleteTransaction request for ID: %d from %s", id, c.ClientIP())
+
 	var transaction models.Transaction
 	if err := h.db.First(&transaction, uint(id)).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
+			log.Printf("Transaction: Transaction not found for delete with ID: %d", id)
 			c.JSON(http.StatusNotFound, models.ErrorResponse{
 				Error:   "Transaction not found",
 				Message: "The requested transaction does not exist",
 			})
 			return
 		}
+		log.Printf("Transaction: Database error retrieving transaction for delete ID: %d: %v", id, err)
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
 			Error:   "Database error",
 			Message: "Failed to retrieve transaction",
@@ -287,7 +331,10 @@ func (h *TransactionHandler) DeleteTransaction(c *gin.Context) {
 		return
 	}
 
+	log.Printf("Transaction: Deleting transaction ID: %d, type: %s, amount: %.2f", transaction.ID, transaction.Type, transaction.Amount)
+
 	if err := h.db.Delete(&transaction).Error; err != nil {
+		log.Printf("Transaction: Database error deleting transaction ID: %d: %v", id, err)
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
 			Error:   "Database error",
 			Message: "Failed to delete transaction",
@@ -295,5 +342,6 @@ func (h *TransactionHandler) DeleteTransaction(c *gin.Context) {
 		return
 	}
 
+	log.Printf("Transaction: Successfully deleted transaction ID: %d", transaction.ID)
 	c.JSON(http.StatusOK, gin.H{"message": "Transaction deleted successfully"})
 }
